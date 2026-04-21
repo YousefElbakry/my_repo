@@ -1,0 +1,100 @@
+ata.ex].filter(x => x.date >= p.d).reduce((sum, x) => sum + (x.s - x.c), 0);
+        const totalCap = data.base + data.partners.reduce((s, x) => s + x.a, 0);
+        return Math.max(0, ((allNet * (p.a / totalCap)) / 2) - p.w);
+    }
+
+    function draw(id) {
+        const p = data.partners.find(x => x.id === id);
+        const amt = calcP(p);
+        if(amt <= 0) return;
+        p.w += amt;
+        data.draws.push({ date: new Date().toISOString().split('T')[0], n: p.n, a: amt });
+        sync();
+    }
+
+    function sync() {
+        data.base = parseFloat(document.getElementById('baseCap').value) || 900;
+        localStorage.setItem('farmDataV7', JSON.stringify(data));
+        render();
+    }
+
+    let myChart;
+    function render() {
+        const now = new Date().toISOString().split('T')[0];
+        const month = now.substring(0, 7);
+        const year = now.substring(0, 4);
+
+        let dp=0, mp=0, yp=0, td=0;
+        const tb = document.querySelector('#mainTable tbody');
+        tb.innerHTML = '';
+        
+        const all = [...data.recs, ...data.ex].sort((a,b) => b.date.localeCompare(a.date));
+        all.forEach(x => {
+            const net = x.s - x.c;
+            if(x.date === now) dp += net;
+            if(x.date.startsWith(month)) mp += net;
+            if(x.date.startsWith(year)) yp += net;
+            if(x.d) td += x.d;
+
+            tb.innerHTML += `<tr><td>${x.date}</td><td>${x.desc}</td><td>${x.s}</td><td>${x.c}</td><td class="${net>=0?'profit':'loss'}">${net.toFixed(2)}</td><td><button class="btn-danger" style="padding:2px 5px;" onclick="del(${x.id}, '${x.type}')">حذف</button></td></tr>`;
+        });
+
+        document.getElementById('dProfit').innerText = dp.toFixed(2);
+        document.getElementById('mProfit').innerText = mp.toFixed(2);
+        document.getElementById('yProfit').innerText = yp.toFixed(2);
+        document.getElementById('tDeaths').innerText = td;
+        document.getElementById('tCapDisplay').innerText = (data.base + data.partners.reduce((s,x)=>s+x.a, 0)).toFixed(2);
+
+        const pl = document.getElementById('pList');
+        pl.innerHTML = '';
+        data.partners.forEach(p => {
+            const pNet = calcP(p);
+            pl.innerHTML += `<div style="border-bottom:1px solid #ddd; padding:5px 0;"><b>${p.n}</b>: ${pNet.toFixed(2)} د.أ <button class="btn-info" style="padding:2px 5px; font-size:0.7rem;" onclick="draw(${p.id})">سحب</button></div>`;
+        });
+
+        const dw = document.querySelector('#withdrawTable tbody');
+        dw.innerHTML = '';
+        data.draws.reverse().forEach(d => dw.innerHTML += `<tr><td>${d.date}</td><td>${d.n}</td><td>${d.a.toFixed(2)}</td></tr>`);
+
+        updateChart();
+    }
+
+    function del(id, type) {
+        if(type==='sale') data.recs = data.recs.filter(x => x.id !== id);
+        else data.ex = data.ex.filter(x => x.id !== id);
+        sync();
+    }
+
+    function updateChart() {
+        const ctx = document.getElementById('profitChart').getContext('2d');
+        const months = {};
+        data.recs.forEach(r => {
+            const m = r.date.substring(0, 7);
+            months[m] = (months[m] || 0) + (r.s - r.c);
+        });
+        
+        if(myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Object.keys(months).sort(),
+                datasets: [{ label: 'صافي الربح الشهري', data: Object.values(months), borderColor: '#27ae60', tension: 0.1 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function exportCSV() {
+        let csv = "التاريخ,الوصف,المبيعات,التكاليف,الصافي\n";
+        [...data.recs, ...data.ex].forEach(x => csv += `${x.date},${x.desc},${x.s},${x.c},${x.s-x.c}\n`);
+        const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "Farm_Backup.csv";
+        link.click();
+    }
+
+    render();
+</script>
+</body>
+</html>
